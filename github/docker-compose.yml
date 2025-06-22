@@ -1,0 +1,56 @@
+# Docker编排配置 - 针对2核16G高性能环境优化
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "7860:7860"
+    volumes:
+      # 将本地的data目录挂载到容器中，用于持久化数据库和日志
+      - ./data:/app/data
+      # 挂载draft_template目录（如果需要修改模板）
+      - ./draft_template:/app/draft_template:ro
+    env_file:
+      # 从 .env 文件加载R2存储配置
+      - .env
+    restart: unless-stopped
+    
+    # 针对2核16G的资源配置
+    deploy:
+      resources:
+        limits:
+          memory: 15G         # 限制最大内存使用15GB，预留1GB给系统
+          cpus: '1.8'         # 限制CPU使用90%，预留10%给系统
+        reservations:
+          memory: 1G          # 保证最小1GB内存
+          cpus: '0.2'         # 保证最小10%CPU
+    
+    # 🔧 环境变量 - 最小化配置
+    environment:
+      # 🐳 Docker环境标识
+      - DOCKER_CONTAINER=true
+      
+      # 🗄️ 数据库配置 - 容器内绝对路径
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/app.db
+
+      # 🌐 服务器配置
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=7860
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/api/v1/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # 日志配置 - 高性能环境可以适当放宽
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5" 
